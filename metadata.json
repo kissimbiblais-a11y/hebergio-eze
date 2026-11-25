@@ -1,0 +1,6 @@
+{
+  "name": "Hébergio",
+  "description": "Plateforme web et PWA d’hébergement de sites web et d’applications avec déploiement en direct, authentification réelle et suivi transparent des paiements Mobile Money FCFA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

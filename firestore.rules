@@ -1,0 +1,319 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar: Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'kissimbiblais@gmail.com';
+    }
+
+    // --- Entity Validation Helpers ---
+    function isValidUserProfile(data, userId) {
+      return data.uid is string
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 80
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 120
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.plan in ['free', 'pro', 'enterprise']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserProfileAdminUpdate(data, userId) {
+      return data.uid is string
+        && data.uid == userId
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 80
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 120
+        && (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500))
+        && data.plan in ['free', 'pro', 'enterprise']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidHostingProject(data) {
+      return data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && data.name is string
+        && data.name.size() >= 2
+        && data.name.size() <= 80
+        && data.slug is string
+        && data.slug.size() >= 3
+        && data.slug.size() <= 50
+        && data.slug.matches('^[a-z0-9][a-z0-9\\-]{1,48}[a-z0-9]$')
+        && data.kind in ['site', 'webapp', 'pwa']
+        && data.description is string
+        && data.description.size() <= 240
+        && data.status in ['draft', 'live', 'paused']
+        && data.entryFile is string
+        && data.entryFile.size() >= 1
+        && data.entryFile.size() <= 80
+        && data.fileCount is int
+        && data.fileCount >= 0
+        && data.fileCount <= 100
+        && data.sizeBytes is int
+        && data.sizeBytes >= 0
+        && data.sizeBytes <= 10485760
+        && data.deployCount is int
+        && data.deployCount >= 0
+        && data.deployCount <= 10000
+        && data.livePath is string
+        && data.livePath.size() >= 3
+        && data.livePath.size() <= 80
+        && data.livePath == ('/s/' + data.slug + '/')
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDeploymentRecord(data, projectId) {
+      return data.projectId is string
+        && data.projectId == projectId
+        && isValidId(data.projectId)
+        && data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && data.version is int
+        && data.version >= 1
+        && data.version <= 10000
+        && data.note is string
+        && data.note.size() >= 1
+        && data.note.size() <= 200
+        && data.fileCount is int
+        && data.fileCount >= 1
+        && data.fileCount <= 100
+        && data.sizeBytes is int
+        && data.sizeBytes >= 1
+        && data.sizeBytes <= 10485760
+        && data.status in ['live', 'paused', 'failed']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidPaymentRequest(data) {
+      return data.ownerId is string
+        && data.ownerId == request.auth.uid
+        && isValidId(data.ownerId)
+        && data.planId in ['pro', 'enterprise']
+        && data.amountFcfa is int
+        && data.amountFcfa in [5000, 15000]
+        && data.provider in ['fedapay', 'kkiapay']
+        && data.operator in ['mtn_benin', 'moov_benin', 'mtn_ci', 'moov_ci', 'mtn_tg', 'moov_tg']
+        && data.phone is string
+        && data.phone.size() >= 8
+        && data.phone.size() <= 20
+        && data.status in ['configuration_required', 'pending_provider']
+        && data.createdAt is timestamp;
+    }
+
+    function isValidServiceOrder(data) {
+      return data.ownerId is string
+        && isValidId(data.ownerId)
+        && data.ownerEmail is string
+        && data.ownerEmail.size() >= 3
+        && data.ownerEmail.size() <= 120
+        && data.ownerName is string
+        && data.ownerName.size() >= 1
+        && data.ownerName.size() <= 80
+        && data.serviceId in ['pro_monthly', 'enterprise_monthly', 'setup_domain', 'pwa_seo_pack']
+        && data.serviceLabel is string
+        && data.serviceLabel.size() >= 3
+        && data.serviceLabel.size() <= 100
+        && data.amountFcfa is int
+        && data.amountFcfa in [5000, 10000, 15000]
+        && data.projectSlug is string
+        && data.projectSlug.size() <= 50
+        && data.contactPhone is string
+        && data.contactPhone.size() >= 8
+        && data.contactPhone.size() <= 20
+        && data.notes is string
+        && data.notes.size() <= 300
+        && data.referenceCode is string
+        && data.referenceCode.size() >= 6
+        && data.referenceCode.size() <= 24
+        && data.referenceCode.matches('^[A-Z0-9\\-]+$')
+        && data.status in ['pending_payment', 'paid', 'completed', 'cancelled']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: /users/{userId} ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && incoming().keys().hasAll(['uid', 'displayName', 'email', 'plan', 'createdAt', 'updatedAt'])
+        && incoming().keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'plan', 'createdAt', 'updatedAt'])
+        && isValidUserProfile(incoming(), userId)
+        && incoming().plan == 'free'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (isOwner(userId)
+            && isValidUserProfile(incoming(), userId)
+            && incoming().plan == existing().plan
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt']))
+          || (isAdmin()
+            && isValidUserProfileAdminUpdate(incoming(), userId)
+            && incoming().diff(existing()).affectedKeys().hasOnly(['plan', 'updatedAt']))
+        );
+
+      allow delete: if false;
+    }
+
+    // --- Collection: /projects/{projectId} ---
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId) && (isOwner(existing().ownerId) || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isValidId(projectId)
+        && isSignedIn()
+        && incoming().keys().hasAll([
+          'ownerId', 'name', 'slug', 'kind', 'description', 'status',
+          'entryFile', 'fileCount', 'sizeBytes', 'deployCount', 'livePath',
+          'createdAt', 'updatedAt'
+        ])
+        && incoming().keys().hasOnly([
+          'ownerId', 'name', 'slug', 'kind', 'description', 'status',
+          'entryFile', 'fileCount', 'sizeBytes', 'deployCount', 'livePath',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidHostingProject(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(projectId)
+        && isValidHostingProject(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().slug == existing().slug
+        && incoming().livePath == existing().livePath
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (isOwner(existing().ownerId) || isAdmin())
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'kind', 'description', 'entryFile', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['status', 'entryFile', 'fileCount', 'sizeBytes', 'deployCount', 'updatedAt'])
+        );
+
+      allow delete: if isValidId(projectId) && (isOwner(existing().ownerId) || isAdmin());
+
+      // --- Subcollection: /projects/{projectId}/deployments/{deploymentId} ---
+      match /deployments/{deploymentId} {
+        allow get: if isValidId(projectId)
+          && isValidId(deploymentId)
+          && (isOwner(existing().ownerId) || isAdmin())
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == existing().ownerId;
+
+        allow list: if isValidId(projectId)
+          && isSignedIn()
+          && (existing().ownerId == request.auth.uid || isAdmin());
+
+        allow create: if isValidId(projectId)
+          && isValidId(deploymentId)
+          && isSignedIn()
+          && incoming().keys().hasAll(['projectId', 'ownerId', 'version', 'note', 'fileCount', 'sizeBytes', 'status', 'createdAt'])
+          && incoming().keys().hasOnly(['projectId', 'ownerId', 'version', 'note', 'fileCount', 'sizeBytes', 'status', 'createdAt'])
+          && isValidDeploymentRecord(incoming(), projectId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/projects/$(projectId))
+          && get(/databases/$(database)/documents/projects/$(projectId)).data.ownerId == request.auth.uid;
+
+        allow update: if false;
+        allow delete: if isValidId(projectId)
+          && isValidId(deploymentId)
+          && (isOwner(existing().ownerId) || isAdmin());
+      }
+    }
+
+    // --- Collection: /payment_requests/{requestId} ---
+    match /payment_requests/{requestId} {
+      allow get: if isValidId(requestId) && (isOwner(existing().ownerId) || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isValidId(requestId)
+        && isSignedIn()
+        && incoming().keys().hasAll(['ownerId', 'planId', 'amountFcfa', 'provider', 'operator', 'phone', 'status', 'createdAt'])
+        && incoming().keys().hasOnly(['ownerId', 'planId', 'amountFcfa', 'provider', 'operator', 'phone', 'status', 'createdAt'])
+        && isValidPaymentRequest(incoming())
+        && incoming().createdAt == request.time;
+
+      allow update: if false;
+      allow delete: if isValidId(requestId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+
+    // --- Collection: /service_orders/{orderId} ---
+    match /service_orders/{orderId} {
+      allow get: if isValidId(orderId) && (isOwner(existing().ownerId) || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || isAdmin());
+
+      allow create: if isValidId(orderId)
+        && isSignedIn()
+        && incoming().keys().hasAll([
+          'ownerId', 'ownerEmail', 'ownerName', 'serviceId', 'serviceLabel',
+          'amountFcfa', 'projectSlug', 'contactPhone', 'notes', 'referenceCode',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && incoming().keys().hasOnly([
+          'ownerId', 'ownerEmail', 'ownerName', 'serviceId', 'serviceLabel',
+          'amountFcfa', 'projectSlug', 'contactPhone', 'notes', 'referenceCode',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && isValidServiceOrder(incoming())
+        && incoming().ownerId == request.auth.uid
+        && incoming().status == 'pending_payment'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(orderId)
+        && isAdmin()
+        && isValidServiceOrder(incoming())
+        && incoming().ownerId == existing().ownerId
+        && incoming().referenceCode == existing().referenceCode
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isValidId(orderId) && (isOwner(existing().ownerId) || isAdmin());
+    }
+  }
+}
