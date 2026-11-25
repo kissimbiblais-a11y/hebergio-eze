@@ -1,4 +1,4 @@
-name = "hebergio"
+name = "hebergio-eze"
 main = "cloudflare/worker.ts"
 compatibility_date = "2025-10-01"
 
@@ -16,5 +16,5 @@ FEDAPAY_ENV = "sandbox"
 #    npx wrangler kv namespace create HEBERGIO_KV
 # 2. Décommentez les 3 lignes ci-dessous et collez l'ID affiché :
  [[kv_namespaces]]
- binding = "HEBERGIO_KV"
+ binding = "HEBERGIO-EZE_KV"
  id = "d2851f0f0a2f46d180c889880f2cc962"
